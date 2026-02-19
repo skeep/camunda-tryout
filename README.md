@@ -14,23 +14,20 @@ A production-style Docker Compose setup for **Camunda 7 BPM Platform** (Communit
 ## Project Structure
 
 ```
-camunda/
+camunda-tryout/
 ├── resources/
-│   ├── dmn/                # Decision Model & Notation rule files (.dmn)
 │   ├── bpmn/               # Business Process Model & Notation files (.bpmn)
-│   ├── forms/              # Camunda embedded forms (.html, .json)
-│   ├── scripts/            # Groovy / JavaScript / Python task scripts
-│   └── templates/          # Freemarker / email / notification templates
-├── config/                 # Custom Camunda config (bpm-platform.xml, logging, etc.)
-├── plugins/                # Custom process engine plugins (.jar)
-├── docker/
-│   └── volumes/            # Docker volume mount overrides
+│   └── dmn/                # Decision Model & Notation rule files (.dmn)
+├── mock-worker/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── worker.py           # Mock external task worker
+├── scripts/
+│   └── deploy.sh           # Deploy resources to Camunda via REST API
 ├── tests/
-│   ├── dmn/                # DMN rule test cases
-│   └── bpmn/               # BPMN process test cases
-├── docs/                   # Architecture diagrams, runbooks, decision logs
+│   └── dmn/                # DMN decision table test suites (shell scripts)
 ├── docker-compose.yml
-├── .env.example
+├── .env.example            # Template – copy to .env before starting
 ├── .env                    # Local environment (git-ignored)
 └── README.md
 ```
@@ -39,27 +36,58 @@ camunda/
 
 - [Docker](https://docs.docker.com/get-docker/) 20.10+
 - [Docker Compose](https://docs.docker.com/compose/install/) v2+
+- `curl` (used by deploy and test scripts)
+- `python3` (used by deploy and test scripts for JSON parsing)
 
 ## Quick Start
 
 ```bash
-# 1. Clone and enter the project directory
-cd camunda
+# 1. Clone the repository
+git clone https://github.com/<your-org>/camunda-tryout.git
+cd camunda-tryout
 
-# 2. Create your environment file
+# 2. Create your environment file from the template
 cp .env.example .env
 
 # 3. Set a strong database password in .env
 #    (edit POSTGRES_PASSWORD – the default "changeme" is for demo only)
 
-# 4. Start the services
+# 4. Start the core services (Camunda + PostgreSQL)
 docker compose up -d
 
-# 5. Check the logs
+# 5. Wait for Camunda to finish booting (first run creates the DB schema)
 docker compose logs -f camunda
 ```
 
 Camunda will wait for PostgreSQL to become healthy before starting. First boot may take a minute while the database schema is created.
+
+Once you see `org.apache.catalina.startup.Catalina.start Server startup` in the logs, Camunda is ready.
+
+## Deploying Resources
+
+Deploy all BPMN and DMN files from `resources/` to the running Camunda instance:
+
+```bash
+# Make the script executable (first time only)
+chmod +x scripts/deploy.sh
+
+# Deploy all resources in a single deployment (waits for Camunda to be ready)
+./scripts/deploy.sh
+
+# Deploy each resource as its own deployment
+./scripts/deploy.sh --per-file
+
+# Deploy to a different environment
+CAMUNDA_REST_URL=http://other-host:8080/engine-rest ./scripts/deploy.sh
+```
+
+The script uses `deploy-changed-only=true`, so re-running it will skip resources that haven't changed since the last deployment.
+
+| Variable           | Default                                 | Description                          |
+| ------------------ | --------------------------------------- | ------------------------------------ |
+| `CAMUNDA_REST_URL` | `http://localhost:8080/engine-rest`     | Camunda REST API base URL            |
+| `DEPLOY_NAME`      | `camunda-tryout`                        | Deployment name shown in Cockpit     |
+| `WAIT_TIMEOUT`     | `120`                                   | Seconds to wait for Camunda startup  |
 
 ## Access
 
@@ -310,6 +338,9 @@ docker compose --profile dev up -d
 ## Running Tests
 
 ```bash
+# Make test scripts executable (first time only)
+chmod +x tests/dmn/*.sh
+
 # Run all DMN test suites
 ./tests/dmn/EmailIntakeValidation_test.sh
 ./tests/dmn/SalesOfficerNotificationAction_test.sh
@@ -349,6 +380,16 @@ docker compose down -v
 ```bash
 docker compose up -d camunda
 ```
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| `POSTGRES_PASSWORD must be set` | You forgot to create `.env`. Run `cp .env.example .env` |
+| Camunda exits immediately | Check logs: `docker compose logs camunda`. Usually a DB connectivity issue — wait for postgres healthcheck |
+| `permission denied: ./scripts/deploy.sh` | Run `chmod +x scripts/deploy.sh` |
+| Deploy script says "Camunda did not become ready" | Increase `WAIT_TIMEOUT` or ensure Camunda is running: `docker compose ps` |
+| Port conflict on 8080 or 5432 | Change `CAMUNDA_PORT` or `POSTGRES_PORT` in `.env` |
 
 ## Production Considerations
 
