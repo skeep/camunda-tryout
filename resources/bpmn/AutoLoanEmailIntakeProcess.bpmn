@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" id="Definitions_intake" targetNamespace="http://camunda.org/schema/1.0/bpmn" exporter="Camunda Modeler" exporterVersion="5.44.0">
+  <bpmn:process id="AutoLoanEmailIntakeProcess" name="Auto Loan Email Intake Process" isExecutable="true" camunda:historyTimeToLive="180">
+    <bpmn:startEvent id="Start_EmailReceived" name="New Email Received">
+      <bpmn:outgoing>Flow_start_to_rule1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:businessRuleTask id="Task_Rule1_EmailIntakeValidation" name="Rule 1: Validate &#38; Route Email" camunda:resultVariable="routingDecision" camunda:decisionRef="Decision_0pz9531" camunda:mapDecisionResult="singleEntry">
+      <bpmn:incoming>Flow_start_to_rule1</bpmn:incoming>
+      <bpmn:outgoing>Flow_rule1_to_gateway</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:exclusiveGateway id="GW_RoutingDecision" name="Routing Decision?">
+      <bpmn:incoming>Flow_rule1_to_gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_gw_success</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gw_multi_app</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gw_no_app</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gw_bad_data</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:callActivity id="CallActivity_Rule3" name="Rule 3: Validate Application Readability" calledElement="ValidateApplicationReadability">
+      <bpmn:extensionElements>
+        <camunda:in variables="all" />
+        <camunda:out variables="all" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_gw_success</bpmn:incoming>
+      <bpmn:incoming>Flow_resumed_to_end</bpmn:incoming>
+      <bpmn:outgoing>Flow_rule3_to_rule4</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:callActivity id="CallActivity_Rule4" name="Rule 4: Verify Duplicate Applications" calledElement="VerifyDuplicateApplications">
+      <bpmn:extensionElements>
+        <camunda:in variables="all" />
+        <camunda:out variables="all" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_rule3_to_rule4</bpmn:incoming>
+      <bpmn:outgoing>Flow_rule4_to_gw</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:exclusiveGateway id="GW_DuplicateOutcome" name="Duplicate Check?">
+      <bpmn:incoming>Flow_rule4_to_gw</bpmn:incoming>
+      <bpmn:outgoing>Flow_dup_proceed</bpmn:outgoing>
+      <bpmn:outgoing>Flow_dup_terminal</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_Proceed" name="Proceed to Rule 5+">
+      <bpmn:incoming>Flow_dup_proceed</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="Task_ArchiveDuplicate" name="Archive Duplicate Case" camunda:type="external" camunda:topic="archiveCase">
+      <bpmn:incoming>Flow_dup_terminal</bpmn:incoming>
+      <bpmn:outgoing>Flow_dup_archive_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_Duplicate" name="Duplicate – Terminal">
+      <bpmn:incoming>Flow_dup_archive_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="GW_MergeExceptions" name="Merge Exceptions">
+      <bpmn:incoming>Flow_gw_multi_app</bpmn:incoming>
+      <bpmn:incoming>Flow_gw_no_app</bpmn:incoming>
+      <bpmn:incoming>Flow_gw_bad_data</bpmn:incoming>
+      <bpmn:outgoing>Flow_exceptions_to_rule2</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:callActivity id="CallActivity_Rule2" name="Rule 2: Sales Officer Notification Protocol" calledElement="SalesOfficerNotificationProcess">
+      <bpmn:extensionElements>
+        <camunda:in source="routingDecision" target="triggerReason" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_exceptions_to_rule2</bpmn:incoming>
+      <bpmn:outgoing>Flow_rule2_to_gw_outcome</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:exclusiveGateway id="GW_Rule2Outcome" name="Notification Outcome?">
+      <bpmn:incoming>Flow_rule2_to_gw_outcome</bpmn:incoming>
+      <bpmn:outgoing>Flow_outcome_resumed</bpmn:outgoing>
+      <bpmn:outgoing>Flow_outcome_closed</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_ResumeLoanProcessing" name="Resume Loan Processing" camunda:type="external" camunda:topic="resumeLoanProcessing">
+      <bpmn:incoming>Flow_outcome_resumed</bpmn:incoming>
+      <bpmn:outgoing>Flow_resumed_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_Closed" name="Closed – No Response">
+      <bpmn:incoming>Flow_closed_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="Task_TerminalClosure" name="Terminal Closure – Archive Case" camunda:type="external" camunda:topic="archiveCase">
+      <bpmn:incoming>Flow_outcome_closed</bpmn:incoming>
+      <bpmn:outgoing>Flow_closed_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_start_to_rule1" sourceRef="Start_EmailReceived" targetRef="Task_Rule1_EmailIntakeValidation" />
+    <bpmn:sequenceFlow id="Flow_rule1_to_gateway" sourceRef="Task_Rule1_EmailIntakeValidation" targetRef="GW_RoutingDecision" />
+    <bpmn:sequenceFlow id="Flow_gw_success" name="SUCCESS" sourceRef="GW_RoutingDecision" targetRef="CallActivity_Rule3">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${routingDecision == 'SUCCESS'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_rule3_to_rule4" sourceRef="CallActivity_Rule3" targetRef="CallActivity_Rule4" />
+    <bpmn:sequenceFlow id="Flow_rule4_to_gw" sourceRef="CallActivity_Rule4" targetRef="GW_DuplicateOutcome" />
+    <bpmn:sequenceFlow id="Flow_dup_proceed" name="PROCEED" sourceRef="GW_DuplicateOutcome" targetRef="End_Proceed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${duplicateCheckOutcome == 'PROCEED'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_dup_terminal" name="DUPLICATE" sourceRef="GW_DuplicateOutcome" targetRef="Task_ArchiveDuplicate">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${duplicateCheckOutcome == 'DUPLICATE'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_dup_archive_to_end" sourceRef="Task_ArchiveDuplicate" targetRef="End_Duplicate" />
+    <bpmn:sequenceFlow id="Flow_gw_multi_app" name="MULTI_APPLICATION" sourceRef="GW_RoutingDecision" targetRef="GW_MergeExceptions">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${routingDecision == 'MULTI_APPLICATION'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_gw_no_app" name="INVALID_NO_APPLICATION" sourceRef="GW_RoutingDecision" targetRef="GW_MergeExceptions">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${routingDecision == 'INVALID_NO_APPLICATION'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_gw_bad_data" name="INVALID_BAD_DATA" sourceRef="GW_RoutingDecision" targetRef="GW_MergeExceptions">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${routingDecision == 'INVALID_BAD_DATA'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_exceptions_to_rule2" sourceRef="GW_MergeExceptions" targetRef="CallActivity_Rule2" />
+    <bpmn:sequenceFlow id="Flow_rule2_to_gw_outcome" sourceRef="CallActivity_Rule2" targetRef="GW_Rule2Outcome" />
+    <bpmn:sequenceFlow id="Flow_outcome_resumed" name="Resumed" sourceRef="GW_Rule2Outcome" targetRef="Task_ResumeLoanProcessing">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${notificationOutcome == 'RESUMED'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_resumed_to_end" sourceRef="Task_ResumeLoanProcessing" targetRef="CallActivity_Rule3" />
+    <bpmn:sequenceFlow id="Flow_outcome_closed" name="Closed" sourceRef="GW_Rule2Outcome" targetRef="Task_TerminalClosure">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${notificationOutcome == 'CLOSED'}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_closed_to_end" sourceRef="Task_TerminalClosure" targetRef="End_Closed" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_intake">
+    <bpmndi:BPMNPlane id="BPMNPlane_intake" bpmnElement="AutoLoanEmailIntakeProcess">
+      <bpmndi:BPMNShape id="Shape_Start" bpmnElement="Start_EmailReceived">
+        <dc:Bounds x="160" y="312" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="152" y="348" width="53" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Rule1" bpmnElement="Task_Rule1_EmailIntakeValidation">
+        <dc:Bounds x="260" y="290" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_GW_Routing" bpmnElement="GW_RoutingDecision" isMarkerVisible="true">
+        <dc:Bounds x="420" y="305" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="400" y="355" width="90" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Rule3" bpmnElement="CallActivity_Rule3">
+        <dc:Bounds x="520" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Rule4" bpmnElement="CallActivity_Rule4">
+        <dc:Bounds x="670" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_EndDup" bpmnElement="End_Duplicate">
+        <dc:Bounds x="1080" y="252" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1070" y="288" width="56" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Rule2" bpmnElement="CallActivity_Rule2">
+        <dc:Bounds x="650" y="390" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_GW_Outcome" bpmnElement="GW_Rule2Outcome" isMarkerVisible="true">
+        <dc:Bounds x="810" y="405" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="808" y="455" width="55" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Resume" bpmnElement="Task_ResumeLoanProcessing">
+        <dc:Bounds x="920" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_EndClosed" bpmnElement="End_Closed">
+        <dc:Bounds x="1080" y="512" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1068" y="548" width="61" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Archive" bpmnElement="Task_TerminalClosure">
+        <dc:Bounds x="920" y="490" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_GW_Dup" bpmnElement="GW_DuplicateOutcome" isMarkerVisible="true">
+        <dc:Bounds x="825" y="105" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="806" y="81" width="87" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_EndProceed" bpmnElement="End_Proceed">
+        <dc:Bounds x="1012" y="112" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="991" y="148" width="79" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ArchiveDup" bpmnElement="Task_ArchiveDuplicate">
+        <dc:Bounds x="920" y="190" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_GW_Merge" bpmnElement="GW_MergeExceptions" isMarkerVisible="true">
+        <dc:Bounds x="545" y="505" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="526" y="555" width="89" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_start" bpmnElement="Flow_start_to_rule1">
+        <di:waypoint x="196" y="330" />
+        <di:waypoint x="260" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_rule1_gw" bpmnElement="Flow_rule1_to_gateway">
+        <di:waypoint x="360" y="330" />
+        <di:waypoint x="420" y="330" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_success" bpmnElement="Flow_gw_success">
+        <di:waypoint x="445" y="305" />
+        <di:waypoint x="445" y="210" />
+        <di:waypoint x="520" y="210" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="433" y="248" width="54" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_multi" bpmnElement="Flow_gw_multi_app">
+        <di:waypoint x="445" y="355" />
+        <di:waypoint x="445" y="530" />
+        <di:waypoint x="545" y="530" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="402" y="476" width="85" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_no_app" bpmnElement="Flow_gw_no_app">
+        <di:waypoint x="470" y="330" />
+        <di:waypoint x="570" y="330" />
+        <di:waypoint x="570" y="505" />
+        <bpmndi:BPMNLabel color:color="#205022">
+          <dc:Bounds x="527" y="391" width="86" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_bad_data" bpmnElement="Flow_gw_bad_data">
+        <di:waypoint x="445" y="355" />
+        <di:waypoint x="445" y="440" />
+        <di:waypoint x="545" y="440" />
+        <di:waypoint x="545" y="530" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="402" y="396" width="85" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_rule3_rule4" bpmnElement="Flow_rule3_to_rule4">
+        <di:waypoint x="620" y="210" />
+        <di:waypoint x="670" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_rule4_gw" bpmnElement="Flow_rule4_to_gw">
+        <di:waypoint x="770" y="210" />
+        <di:waypoint x="850" y="210" />
+        <di:waypoint x="850" y="155" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_dup_archive_end" bpmnElement="Flow_dup_archive_to_end">
+        <di:waypoint x="1020" y="230" />
+        <di:waypoint x="1050" y="230" />
+        <di:waypoint x="1050" y="270" />
+        <di:waypoint x="1080" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_merge_rule2" bpmnElement="Flow_exceptions_to_rule2">
+        <di:waypoint x="595" y="530" />
+        <di:waypoint x="700" y="530" />
+        <di:waypoint x="700" y="470" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_rule2_outcome" bpmnElement="Flow_rule2_to_gw_outcome">
+        <di:waypoint x="750" y="430" />
+        <di:waypoint x="810" y="430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_resumed" bpmnElement="Flow_outcome_resumed">
+        <di:waypoint x="835" y="405" />
+        <di:waypoint x="835" y="350" />
+        <di:waypoint x="920" y="350" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="826" y="368" width="48" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_closed" bpmnElement="Flow_outcome_closed">
+        <di:waypoint x="835" y="455" />
+        <di:waypoint x="835" y="530" />
+        <di:waypoint x="920" y="530" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="833" y="483" width="35" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_resumed_end" bpmnElement="Flow_resumed_to_end">
+        <di:waypoint x="920" y="320" />
+        <di:waypoint x="590" y="320" />
+        <di:waypoint x="590" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_closed_end" bpmnElement="Flow_closed_to_end">
+        <di:waypoint x="1020" y="530" />
+        <di:waypoint x="1080" y="530" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_dup_proceed" bpmnElement="Flow_dup_proceed">
+        <di:waypoint x="875" y="130" />
+        <di:waypoint x="1012" y="130" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="957" y="110" width="55" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_dup_terminal" bpmnElement="Flow_dup_terminal">
+        <di:waypoint x="850" y="155" />
+        <di:waypoint x="850" y="230" />
+        <di:waypoint x="920" y="230" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="835" y="180" width="61" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

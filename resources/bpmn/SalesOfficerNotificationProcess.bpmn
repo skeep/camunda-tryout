@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_notification_process" targetNamespace="http://camunda.org/schema/1.0/bpmn" exporter="Camunda Modeler" exporterVersion="5.44.0">
+  <bpmn:process id="SalesOfficerNotificationProcess" name="Sales Officer Notification &#38; Follow-ups Protocol" isExecutable="true" camunda:historyTimeToLive="180">
+    <bpmn:startEvent id="StartEvent_Notification" name="Notification Triggered">
+      <bpmn:outgoing>Flow_start_to_sub</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:subProcess id="SubProcess_NotificationFlow" name="Notification Flow">
+      <bpmn:incoming>Flow_start_to_sub</bpmn:incoming>
+      <bpmn:outgoing>Flow_sub_to_set_closed</bpmn:outgoing>
+      <bpmn:startEvent id="SubStart" name="Start Notification Flow">
+        <bpmn:outgoing>Flow_sub_start_to_calc_bh</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:scriptTask id="Task_CalcBH_Initial" name="Calculate Business Hours" scriptFormat="javascript" camunda:resultVariable="isBusinessHours">
+        <bpmn:incoming>Flow_sub_start_to_calc_bh</bpmn:incoming>
+        <bpmn:outgoing>Flow_calc_to_dmn_initial</bpmn:outgoing>
+        <bpmn:script>
+var now = new java.util.Date();
+var cal = java.util.Calendar.getInstance();
+cal.setTime(now);
+var dow = cal.get(java.util.Calendar.DAY_OF_WEEK);
+var hour = cal.get(java.util.Calendar.HOUR_OF_DAY);
+var isWeekday = (dow &gt;= java.util.Calendar.MONDAY &amp;&amp; dow &lt;= java.util.Calendar.FRIDAY);
+var inWindow = (hour &gt;= 6 &amp;&amp; hour &lt; 22);
+isWeekday &amp;&amp; inWindow;
+        </bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:businessRuleTask id="DMN_Initial" name="Evaluate Notification Action (INITIAL)" camunda:resultVariable="dmnResult" camunda:decisionRef="SalesOfficerNotificationAction" camunda:mapDecisionResult="singleResult">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="notificationStage">INITIAL</camunda:inputParameter>
+            <camunda:inputParameter name="responseReceived">${false}</camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_calc_to_dmn_initial</bpmn:incoming>
+        <bpmn:outgoing>Flow_dmn_initial_to_gw</bpmn:outgoing>
+      </bpmn:businessRuleTask>
+      <bpmn:exclusiveGateway id="GW_Initial" name="Initial Action?">
+        <bpmn:incoming>Flow_dmn_initial_to_gw</bpmn:incoming>
+        <bpmn:outgoing>Flow_gw_initial_send</bpmn:outgoing>
+        <bpmn:outgoing>Flow_gw_initial_schedule</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:intermediateCatchEvent id="Timer_WaitForWindow" name="Wait for Business Window">
+        <bpmn:incoming>Flow_schedule_to_timer_wait</bpmn:incoming>
+        <bpmn:outgoing>Flow_timer_wait_to_send_initial</bpmn:outgoing>
+        <bpmn:timerEventDefinition id="TimerDef_WaitWindow">
+          <bpmn:timeDate xsi:type="bpmn:tFormalExpression">${nextWindowDateTime}</bpmn:timeDate>
+        </bpmn:timerEventDefinition>
+      </bpmn:intermediateCatchEvent>
+      <bpmn:exclusiveGateway id="GW_Merge_Initial" name="Merge">
+        <bpmn:incoming>Flow_gw_initial_send</bpmn:incoming>
+        <bpmn:incoming>Flow_timer_wait_to_send_initial</bpmn:incoming>
+        <bpmn:outgoing>Flow_merge_to_send_initial</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="Task_SendInitial" name="Send Initial Notification" camunda:type="external" camunda:topic="sendNotification">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="notificationType">INITIAL_ALERT</camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_merge_to_send_initial</bpmn:incoming>
+        <bpmn:outgoing>Flow_send_initial_to_timer_fu1</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:intermediateCatchEvent id="Timer_FU1" name="Wait 1 Hour">
+        <bpmn:incoming>Flow_send_initial_to_timer_fu1</bpmn:incoming>
+        <bpmn:outgoing>Flow_timer_fu1_to_send</bpmn:outgoing>
+        <bpmn:timerEventDefinition id="TimerDef_FU1">
+          <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1H</bpmn:timeDuration>
+        </bpmn:timerEventDefinition>
+      </bpmn:intermediateCatchEvent>
+      <bpmn:serviceTask id="Task_SendFU1" name="Send Follow-Up 1" camunda:type="external" camunda:topic="sendNotification">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="notificationType">FOLLOW_UP_1</camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_timer_fu1_to_send</bpmn:incoming>
+        <bpmn:outgoing>Flow_send_fu1_to_timer_fu2</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:intermediateCatchEvent id="Timer_FU2" name="Wait 3 Hours">
+        <bpmn:incoming>Flow_send_fu1_to_timer_fu2</bpmn:incoming>
+        <bpmn:outgoing>Flow_timer_fu2_to_send</bpmn:outgoing>
+        <bpmn:timerEventDefinition id="TimerDef_FU2">
+          <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT3H</bpmn:timeDuration>
+        </bpmn:timerEventDefinition>
+      </bpmn:intermediateCatchEvent>
+      <bpmn:serviceTask id="Task_SendFU2" name="Send Follow-Up 2" camunda:type="external" camunda:topic="sendNotification">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="notificationType">FOLLOW_UP_2</camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_timer_fu2_to_send</bpmn:incoming>
+        <bpmn:outgoing>Flow_send_fu2_to_timer_deadline</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:scriptTask id="Task_CalcDeadline" name="Calculate 16h Business-Hour Deadline" scriptFormat="javascript" camunda:resultVariable="deadlineDateTime">
+        <bpmn:incoming>Flow_send_fu2_to_timer_deadline</bpmn:incoming>
+        <bpmn:outgoing>Flow_calc_deadline_to_timer</bpmn:outgoing>
+        <bpmn:script>
+var cal = java.util.Calendar.getInstance();
+var remainingHours = 16;
+while (remainingHours &gt; 0) {
+  var dow = cal.get(java.util.Calendar.DAY_OF_WEEK);
+  var hour = cal.get(java.util.Calendar.HOUR_OF_DAY);
+  var isWeekday = (dow &gt;= java.util.Calendar.MONDAY &amp;&amp; dow &lt;= java.util.Calendar.FRIDAY);
+  if (isWeekday &amp;&amp; hour &gt;= 6 &amp;&amp; hour &lt; 22) {
+    remainingHours--;
+  }
+  cal.add(java.util.Calendar.HOUR_OF_DAY, 1);
+}
+var sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+sdf.format(cal.getTime());
+        </bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:intermediateCatchEvent id="Timer_Deadline" name="Wait for 16h Deadline">
+        <bpmn:incoming>Flow_calc_deadline_to_timer</bpmn:incoming>
+        <bpmn:outgoing>Flow_deadline_to_close</bpmn:outgoing>
+        <bpmn:timerEventDefinition id="TimerDef_Deadline">
+          <bpmn:timeDate xsi:type="bpmn:tFormalExpression">${deadlineDateTime}</bpmn:timeDate>
+        </bpmn:timerEventDefinition>
+      </bpmn:intermediateCatchEvent>
+      <bpmn:serviceTask id="Task_SendClosing" name="Send Closing Message" camunda:type="external" camunda:topic="sendNotification">
+        <bpmn:extensionElements>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="notificationType">CLOSING_MESSAGE</camunda:inputParameter>
+          </camunda:inputOutput>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_deadline_to_close</bpmn:incoming>
+        <bpmn:outgoing>Flow_close_to_subend</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="SubEnd_NoResponse" name="No Response – Closed">
+        <bpmn:incoming>Flow_close_to_subend</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Flow_sub_start_to_calc_bh" sourceRef="SubStart" targetRef="Task_CalcBH_Initial" />
+      <bpmn:sequenceFlow id="Flow_calc_to_dmn_initial" sourceRef="Task_CalcBH_Initial" targetRef="DMN_Initial" />
+      <bpmn:sequenceFlow id="Flow_dmn_initial_to_gw" sourceRef="DMN_Initial" targetRef="GW_Initial" />
+      <bpmn:sequenceFlow id="Flow_gw_initial_send" name="SEND_NOW" sourceRef="GW_Initial" targetRef="GW_Merge_Initial">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${dmnResult.action == 'SEND_NOW'}</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Flow_timer_wait_to_send_initial" sourceRef="Timer_WaitForWindow" targetRef="GW_Merge_Initial" />
+      <bpmn:sequenceFlow id="Flow_merge_to_send_initial" sourceRef="GW_Merge_Initial" targetRef="Task_SendInitial" />
+      <bpmn:sequenceFlow id="Flow_send_initial_to_timer_fu1" sourceRef="Task_SendInitial" targetRef="Timer_FU1" />
+      <bpmn:sequenceFlow id="Flow_timer_fu1_to_send" sourceRef="Timer_FU1" targetRef="Task_SendFU1" />
+      <bpmn:sequenceFlow id="Flow_send_fu1_to_timer_fu2" sourceRef="Task_SendFU1" targetRef="Timer_FU2" />
+      <bpmn:sequenceFlow id="Flow_timer_fu2_to_send" sourceRef="Timer_FU2" targetRef="Task_SendFU2" />
+      <bpmn:sequenceFlow id="Flow_send_fu2_to_timer_deadline" sourceRef="Task_SendFU2" targetRef="Task_CalcDeadline" />
+      <bpmn:sequenceFlow id="Flow_calc_deadline_to_timer" sourceRef="Task_CalcDeadline" targetRef="Timer_Deadline" />
+      <bpmn:sequenceFlow id="Flow_deadline_to_close" sourceRef="Timer_Deadline" targetRef="Task_SendClosing" />
+      <bpmn:sequenceFlow id="Flow_close_to_subend" sourceRef="Task_SendClosing" targetRef="SubEnd_NoResponse" />
+      <bpmn:sequenceFlow id="Flow_schedule_to_timer_wait" sourceRef="Task_CalcNextWindow" targetRef="Timer_WaitForWindow" />
+      <bpmn:sequenceFlow id="Flow_gw_initial_schedule" name="SCHEDULE" sourceRef="GW_Initial" targetRef="Task_CalcNextWindow">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${dmnResult.action == 'SCHEDULE_NEXT_WINDOW'}</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:scriptTask id="Task_CalcNextWindow" name="Calculate Next Business Window" scriptFormat="javascript" camunda:resultVariable="nextWindowDateTime">
+        <bpmn:incoming>Flow_gw_initial_schedule</bpmn:incoming>
+        <bpmn:outgoing>Flow_schedule_to_timer_wait</bpmn:outgoing>
+        <bpmn:script></bpmn:script>
+      </bpmn:scriptTask>
+    </bpmn:subProcess>
+    <bpmn:boundaryEvent id="BoundaryEvent_Response" name="Sales Officer Responded" attachedToRef="SubProcess_NotificationFlow">
+      <bpmn:outgoing>Flow_response_to_resume</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgDef_Response" messageRef="Message_SalesOfficerResponse" />
+    </bpmn:boundaryEvent>
+    <bpmn:scriptTask id="Task_SetOutcomeResumed" name="Set Outcome: RESUMED" scriptFormat="javascript" camunda:resultVariable="notificationOutcome">
+      <bpmn:incoming>Flow_response_to_resume</bpmn:incoming>
+      <bpmn:outgoing>Flow_outcome_resumed_to_task</bpmn:outgoing>
+      <bpmn:script>"RESUMED";</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:serviceTask id="Task_ResumeLoanProcessing" name="Resume Loan Processing" camunda:type="external" camunda:topic="resumeLoanProcessing">
+      <bpmn:incoming>Flow_outcome_resumed_to_task</bpmn:incoming>
+      <bpmn:outgoing>Flow_resume_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:scriptTask id="Task_SetOutcomeClosed" name="Set Outcome: CLOSED" scriptFormat="javascript" camunda:resultVariable="notificationOutcome">
+      <bpmn:incoming>Flow_sub_to_set_closed</bpmn:incoming>
+      <bpmn:outgoing>Flow_set_closed_to_end</bpmn:outgoing>
+      <bpmn:script>"CLOSED";</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:endEvent id="EndEvent_Closed" name="Closed – No Response">
+      <bpmn:incoming>Flow_set_closed_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="EndEvent_Resumed" name="Resumed – Response Received">
+      <bpmn:incoming>Flow_resume_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_sub" sourceRef="StartEvent_Notification" targetRef="SubProcess_NotificationFlow" />
+    <bpmn:sequenceFlow id="Flow_sub_to_set_closed" sourceRef="SubProcess_NotificationFlow" targetRef="Task_SetOutcomeClosed" />
+    <bpmn:sequenceFlow id="Flow_set_closed_to_end" sourceRef="Task_SetOutcomeClosed" targetRef="EndEvent_Closed" />
+    <bpmn:sequenceFlow id="Flow_response_to_resume" sourceRef="BoundaryEvent_Response" targetRef="Task_SetOutcomeResumed" />
+    <bpmn:sequenceFlow id="Flow_outcome_resumed_to_task" sourceRef="Task_SetOutcomeResumed" targetRef="Task_ResumeLoanProcessing" />
+    <bpmn:sequenceFlow id="Flow_resume_to_end" sourceRef="Task_ResumeLoanProcessing" targetRef="EndEvent_Resumed" />
+  </bpmn:process>
+  <bpmn:message id="Message_SalesOfficerResponse" name="SalesOfficerResponse" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="SalesOfficerNotificationProcess">
+      <bpmndi:BPMNShape id="Shape_Start" bpmnElement="StartEvent_Notification">
+        <dc:Bounds x="160" y="280" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_SetOutcomeResumed" bpmnElement="Task_SetOutcomeResumed">
+        <dc:Bounds x="918" y="490" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Resume" bpmnElement="Task_ResumeLoanProcessing">
+        <dc:Bounds x="1110" y="490" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_EndResumed" bpmnElement="EndEvent_Resumed">
+        <dc:Bounds x="1292" y="512" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1341" y="500" width="57" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Sub" bpmnElement="SubProcess_NotificationFlow" isExpanded="true">
+        <dc:Bounds x="250" y="80" width="1416" height="330" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_SubStart" bpmnElement="SubStart">
+        <dc:Bounds x="280" y="280" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_CalcBH" bpmnElement="Task_CalcBH_Initial">
+        <dc:Bounds x="350" y="258" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DMN_Initial" bpmnElement="DMN_Initial">
+        <dc:Bounds x="480" y="258" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_GW_Initial" bpmnElement="GW_Initial" isMarkerVisible="true">
+        <dc:Bounds x="610" y="273" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TimerWait" bpmnElement="Timer_WaitForWindow">
+        <dc:Bounds x="762" y="162" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="736" y="124.5" width="87" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_GW_Merge" bpmnElement="GW_Merge_Initial" isMarkerVisible="true">
+        <dc:Bounds x="730" y="273" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_SendInitial" bpmnElement="Task_SendInitial">
+        <dc:Bounds x="810" y="258" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Timer_FU1" bpmnElement="Timer_FU1">
+        <dc:Bounds x="940" y="280" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_SendFU1" bpmnElement="Task_SendFU1">
+        <dc:Bounds x="1000" y="258" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Timer_FU2" bpmnElement="Timer_FU2">
+        <dc:Bounds x="1130" y="280" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_SendFU2" bpmnElement="Task_SendFU2">
+        <dc:Bounds x="1190" y="258" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_CalcDeadline" bpmnElement="Task_CalcDeadline">
+        <dc:Bounds x="1310" y="258" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Timer_Deadline" bpmnElement="Timer_Deadline">
+        <dc:Bounds x="1430" y="280" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_SendClosing" bpmnElement="Task_SendClosing">
+        <dc:Bounds x="1490" y="258" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_SubEnd" bpmnElement="SubEnd_NoResponse">
+        <dc:Bounds x="1610" y="280" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_CalcNextWindow" bpmnElement="Task_CalcNextWindow">
+        <dc:Bounds x="570" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_sub_start_to_calc_bh" bpmnElement="Flow_sub_start_to_calc_bh">
+        <di:waypoint x="316" y="298" />
+        <di:waypoint x="350" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_calc_to_dmn_initial" bpmnElement="Flow_calc_to_dmn_initial">
+        <di:waypoint x="450" y="298" />
+        <di:waypoint x="480" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_dmn_initial_to_gw" bpmnElement="Flow_dmn_initial_to_gw">
+        <di:waypoint x="580" y="298" />
+        <di:waypoint x="610" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_gw_initial_send" bpmnElement="Flow_gw_initial_send">
+        <di:waypoint x="660" y="298" />
+        <di:waypoint x="730" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_timer_wait_to_merge" bpmnElement="Flow_timer_wait_to_send_initial">
+        <di:waypoint x="778" y="198" />
+        <di:waypoint x="778" y="236" />
+        <di:waypoint x="757" y="236" />
+        <di:waypoint x="757" y="275" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_merge_to_send_initial" bpmnElement="Flow_merge_to_send_initial">
+        <di:waypoint x="780" y="298" />
+        <di:waypoint x="810" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_send_initial_to_timer_fu1" bpmnElement="Flow_send_initial_to_timer_fu1">
+        <di:waypoint x="910" y="298" />
+        <di:waypoint x="940" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_timer_fu1_to_send" bpmnElement="Flow_timer_fu1_to_send">
+        <di:waypoint x="976" y="298" />
+        <di:waypoint x="1000" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_send_fu1_to_timer_fu2" bpmnElement="Flow_send_fu1_to_timer_fu2">
+        <di:waypoint x="1100" y="298" />
+        <di:waypoint x="1130" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_timer_fu2_to_send" bpmnElement="Flow_timer_fu2_to_send">
+        <di:waypoint x="1166" y="298" />
+        <di:waypoint x="1190" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_send_fu2_to_deadline" bpmnElement="Flow_send_fu2_to_timer_deadline">
+        <di:waypoint x="1290" y="298" />
+        <di:waypoint x="1310" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_calc_deadline_to_timer" bpmnElement="Flow_calc_deadline_to_timer">
+        <di:waypoint x="1410" y="298" />
+        <di:waypoint x="1430" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_deadline_to_close" bpmnElement="Flow_deadline_to_close">
+        <di:waypoint x="1466" y="298" />
+        <di:waypoint x="1490" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_close_to_subend" bpmnElement="Flow_close_to_subend">
+        <di:waypoint x="1590" y="298" />
+        <di:waypoint x="1610" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_schedule_to_timer_wait" bpmnElement="Flow_schedule_to_timer_wait">
+        <di:waypoint x="670" y="160" />
+        <di:waypoint x="716" y="160" />
+        <di:waypoint x="716" y="180" />
+        <di:waypoint x="762" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_gw_initial_schedule" bpmnElement="Flow_gw_initial_schedule">
+        <di:waypoint x="635" y="273" />
+        <di:waypoint x="635" y="247" />
+        <di:waypoint x="620" y="247" />
+        <di:waypoint x="620" y="200" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="597" y="255" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Shape_SetOutcomeClosed" bpmnElement="Task_SetOutcomeClosed">
+        <dc:Bounds x="1700" y="258" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_EndClosed" bpmnElement="EndEvent_Closed">
+        <dc:Bounds x="1852" y="280" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Boundary" bpmnElement="BoundaryEvent_Response">
+        <dc:Bounds x="950" y="392" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="937" y="428" width="63" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_start_to_sub" bpmnElement="Flow_start_to_sub">
+        <di:waypoint x="196" y="298" />
+        <di:waypoint x="250" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_sub_to_set_closed" bpmnElement="Flow_sub_to_set_closed">
+        <di:waypoint x="1666" y="298" />
+        <di:waypoint x="1700" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_set_closed_to_end" bpmnElement="Flow_set_closed_to_end">
+        <di:waypoint x="1800" y="298" />
+        <di:waypoint x="1852" y="298" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_response_to_resume" bpmnElement="Flow_response_to_resume">
+        <di:waypoint x="968" y="428" />
+        <di:waypoint x="968" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_outcome_resumed_to_task" bpmnElement="Flow_outcome_resumed_to_task">
+        <di:waypoint x="1018" y="530" />
+        <di:waypoint x="1110" y="530" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_resume_to_end" bpmnElement="Flow_resume_to_end">
+        <di:waypoint x="1210" y="530" />
+        <di:waypoint x="1292" y="530" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

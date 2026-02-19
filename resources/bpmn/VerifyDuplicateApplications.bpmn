@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_rule4"
+                  targetNamespace="http://camunda.org/schema/1.0/bpmn"
+                  exporter="Camunda Modeler"
+                  exporterVersion="5.44.0">
+
+  <bpmn:process id="VerifyDuplicateApplications"
+                name="Rule 4: Verify Duplicate Applications"
+                isExecutable="true"
+                camunda:historyTimeToLive="180">
+
+    <!-- START -->
+    <bpmn:startEvent id="Start_Rule4" name="Start Duplicate Check">
+      <bpmn:outgoing>Flow_start_to_check</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <!-- Check for duplicates in 30-day window -->
+    <bpmn:serviceTask id="Task_CheckDuplicate"
+                      name="Check Duplicate Applications (30-day)"
+                      camunda:type="external"
+                      camunda:topic="checkDuplicateApplication">
+      <bpmn:incoming>Flow_start_to_check</bpmn:incoming>
+      <bpmn:outgoing>Flow_check_to_gw</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Gateway: Duplicate? -->
+    <bpmn:exclusiveGateway id="GW_Duplicate" name="Is Duplicate?">
+      <bpmn:incoming>Flow_check_to_gw</bpmn:incoming>
+      <bpmn:outgoing>Flow_not_duplicate</bpmn:outgoing>
+      <bpmn:outgoing>Flow_is_duplicate</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- ============================================================ -->
+    <!-- PROCEED PATH: Not a duplicate                                -->
+    <!-- ============================================================ -->
+    <bpmn:scriptTask id="Task_SetProceed"
+                     name="Set Outcome: PROCEED"
+                     scriptFormat="javascript"
+                     camunda:resultVariable="duplicateCheckOutcome">
+      <bpmn:incoming>Flow_not_duplicate</bpmn:incoming>
+      <bpmn:outgoing>Flow_proceed_to_end</bpmn:outgoing>
+      <bpmn:script>"PROCEED";</bpmn:script>
+    </bpmn:scriptTask>
+
+    <bpmn:endEvent id="End_Proceed" name="Proceed to Next Rule">
+      <bpmn:incoming>Flow_proceed_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- ============================================================ -->
+    <!-- TERMINAL PATH: Duplicate found                               -->
+    <!-- ============================================================ -->
+    <bpmn:serviceTask id="Task_NotifyDuplicate"
+                      name="Notify Sales Officer – Duplicate"
+                      camunda:type="external"
+                      camunda:topic="notifyDuplicate">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="matchedApplicationId">${isDuplicate ? (execution.hasVariable('matchedApplicationId') ? matchedApplicationId : 'UNKNOWN') : 'N/A'}</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_is_duplicate</bpmn:incoming>
+      <bpmn:outgoing>Flow_notify_to_set</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:scriptTask id="Task_SetDuplicate"
+                     name="Set Outcome: DUPLICATE"
+                     scriptFormat="javascript"
+                     camunda:resultVariable="duplicateCheckOutcome">
+      <bpmn:incoming>Flow_notify_to_set</bpmn:incoming>
+      <bpmn:outgoing>Flow_duplicate_to_end</bpmn:outgoing>
+      <bpmn:script>"DUPLICATE";</bpmn:script>
+    </bpmn:scriptTask>
+
+    <bpmn:endEvent id="End_Duplicate" name="Duplicate Found – Terminal">
+      <bpmn:incoming>Flow_duplicate_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- ============================================================ -->
+    <!-- SEQUENCE FLOWS                                               -->
+    <!-- ============================================================ -->
+    <bpmn:sequenceFlow id="Flow_start_to_check" sourceRef="Start_Rule4" targetRef="Task_CheckDuplicate" />
+    <bpmn:sequenceFlow id="Flow_check_to_gw" sourceRef="Task_CheckDuplicate" targetRef="GW_Duplicate" />
+
+    <bpmn:sequenceFlow id="Flow_not_duplicate" name="Not Duplicate" sourceRef="GW_Duplicate" targetRef="Task_SetProceed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${isDuplicate == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_is_duplicate" name="Duplicate Found" sourceRef="GW_Duplicate" targetRef="Task_NotifyDuplicate">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${isDuplicate == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_proceed_to_end" sourceRef="Task_SetProceed" targetRef="End_Proceed" />
+
+    <bpmn:sequenceFlow id="Flow_notify_to_set" sourceRef="Task_NotifyDuplicate" targetRef="Task_SetDuplicate" />
+    <bpmn:sequenceFlow id="Flow_duplicate_to_end" sourceRef="Task_SetDuplicate" targetRef="End_Duplicate" />
+
+  </bpmn:process>
+
+  <!-- ================================================================ -->
+  <!-- DIAGRAM                                                          -->
+  <!-- ================================================================ -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_rule4">
+    <bpmndi:BPMNPlane id="BPMNPlane_rule4" bpmnElement="VerifyDuplicateApplications">
+
+      <bpmndi:BPMNShape id="Shape_Start4" bpmnElement="Start_Rule4">
+        <dc:Bounds x="160" y="282" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Check" bpmnElement="Task_CheckDuplicate">
+        <dc:Bounds x="260" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_GW_Dup" bpmnElement="GW_Duplicate" isMarkerVisible="true">
+        <dc:Bounds x="425" y="275" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <!-- Proceed path (top) -->
+      <bpmndi:BPMNShape id="Shape_SetProceed" bpmnElement="Task_SetProceed">
+        <dc:Bounds x="540" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_EndProceed" bpmnElement="End_Proceed">
+        <dc:Bounds x="702" y="182" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Duplicate path (bottom) -->
+      <bpmndi:BPMNShape id="Shape_Notify" bpmnElement="Task_NotifyDuplicate">
+        <dc:Bounds x="540" y="370" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_SetDup" bpmnElement="Task_SetDuplicate">
+        <dc:Bounds x="700" y="370" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_EndDup" bpmnElement="End_Duplicate">
+        <dc:Bounds x="862" y="392" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Edges -->
+      <bpmndi:BPMNEdge id="Edge_start4" bpmnElement="Flow_start_to_check">
+        <di:waypoint x="196" y="300" />
+        <di:waypoint x="260" y="300" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_check_gw" bpmnElement="Flow_check_to_gw">
+        <di:waypoint x="360" y="300" />
+        <di:waypoint x="425" y="300" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_not_dup" bpmnElement="Flow_not_duplicate">
+        <di:waypoint x="450" y="275" />
+        <di:waypoint x="450" y="200" />
+        <di:waypoint x="540" y="200" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_is_dup" bpmnElement="Flow_is_duplicate">
+        <di:waypoint x="450" y="325" />
+        <di:waypoint x="450" y="410" />
+        <di:waypoint x="540" y="410" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_proceed_end" bpmnElement="Flow_proceed_to_end">
+        <di:waypoint x="640" y="200" />
+        <di:waypoint x="702" y="200" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_notify_set" bpmnElement="Flow_notify_to_set">
+        <di:waypoint x="640" y="410" />
+        <di:waypoint x="700" y="410" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_dup_end" bpmnElement="Flow_duplicate_to_end">
+        <di:waypoint x="800" y="410" />
+        <di:waypoint x="862" y="410" />
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</bpmn:definitions>

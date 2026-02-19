@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_rule3"
+                  targetNamespace="http://camunda.org/schema/1.0/bpmn"
+                  exporter="Camunda Modeler"
+                  exporterVersion="5.44.0">
+
+  <bpmn:message id="Message_CogFormSubmitted" name="CogFormSubmitted" />
+
+  <bpmn:process id="ValidateApplicationReadability"
+                name="Rule 3: Validate Application Readability"
+                isExecutable="true"
+                camunda:historyTimeToLive="180">
+
+    <!-- START -->
+    <bpmn:startEvent id="Start_Rule3" name="Start Readability Check">
+      <bpmn:outgoing>Flow_start_to_assess</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <!-- Assess Readability (AI/OCR) -->
+    <bpmn:serviceTask id="Task_AssessReadability"
+                      name="Assess Readability"
+                      camunda:type="external"
+                      camunda:topic="assessReadability">
+      <bpmn:incoming>Flow_start_to_assess</bpmn:incoming>
+      <bpmn:outgoing>Flow_assess_to_gw</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Gateway: Readable? -->
+    <bpmn:exclusiveGateway id="GW_Readable" name="Is Readable?">
+      <bpmn:incoming>Flow_assess_to_gw</bpmn:incoming>
+      <bpmn:outgoing>Flow_readable_yes</bpmn:outgoing>
+      <bpmn:outgoing>Flow_readable_no</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- ============================================================ -->
+    <!-- SUCCESS PATH: Document is readable                           -->
+    <!-- ============================================================ -->
+    <bpmn:serviceTask id="Task_ExtractData"
+                      name="Extract &amp; Organize Borrower Data"
+                      camunda:type="external"
+                      camunda:topic="extractBorrowerData">
+      <bpmn:incoming>Flow_readable_yes</bpmn:incoming>
+      <bpmn:outgoing>Flow_extract_to_merge</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- ============================================================ -->
+    <!-- HUMAN LANE: Document is unreadable – COG handoff             -->
+    <!-- Bypasses Rule 2 (Sales Officer Notification)                 -->
+    <!-- ============================================================ -->
+    <bpmn:serviceTask id="Task_SendCogEmail"
+                      name="Send Email to COG Mailbox"
+                      camunda:type="external"
+                      camunda:topic="sendCogEmail">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="ccSalesOfficer">${true}</camunda:inputParameter>
+          <camunda:inputParameter name="ccMonitoringAssistant">${true}</camunda:inputParameter>
+          <camunda:inputParameter name="includeOriginalFiles">${true}</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_readable_no</bpmn:incoming>
+      <bpmn:outgoing>Flow_cog_to_wait</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Wait for COG team to submit encoded form -->
+    <bpmn:intermediateCatchEvent id="Event_WaitCogForm" name="Wait for COG Form Submission">
+      <bpmn:incoming>Flow_cog_to_wait</bpmn:incoming>
+      <bpmn:outgoing>Flow_wait_to_extract_cog</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgDef_CogForm" messageRef="Message_CogFormSubmitted" />
+    </bpmn:intermediateCatchEvent>
+
+    <!-- Extract data from COG-encoded form -->
+    <bpmn:serviceTask id="Task_ExtractDataCog"
+                      name="Extract Data from COG Encoding"
+                      camunda:type="external"
+                      camunda:topic="extractBorrowerData">
+      <bpmn:incoming>Flow_wait_to_extract_cog</bpmn:incoming>
+      <bpmn:outgoing>Flow_extract_cog_to_merge</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- ============================================================ -->
+    <!-- MERGE: Both paths converge                                   -->
+    <!-- ============================================================ -->
+    <bpmn:exclusiveGateway id="GW_Merge" name="Merge">
+      <bpmn:incoming>Flow_extract_to_merge</bpmn:incoming>
+      <bpmn:incoming>Flow_extract_cog_to_merge</bpmn:incoming>
+      <bpmn:outgoing>Flow_merge_to_set</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- Set output variable -->
+    <bpmn:scriptTask id="Task_SetReady"
+                     name="Set: Data Ready"
+                     scriptFormat="javascript"
+                     camunda:resultVariable="borrowerDataReady">
+      <bpmn:incoming>Flow_merge_to_set</bpmn:incoming>
+      <bpmn:outgoing>Flow_set_to_end</bpmn:outgoing>
+      <bpmn:script>true;</bpmn:script>
+    </bpmn:scriptTask>
+
+    <!-- END -->
+    <bpmn:endEvent id="End_DataReady" name="Data Ready">
+      <bpmn:incoming>Flow_set_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- ============================================================ -->
+    <!-- SEQUENCE FLOWS                                               -->
+    <!-- ============================================================ -->
+    <bpmn:sequenceFlow id="Flow_start_to_assess" sourceRef="Start_Rule3" targetRef="Task_AssessReadability" />
+    <bpmn:sequenceFlow id="Flow_assess_to_gw" sourceRef="Task_AssessReadability" targetRef="GW_Readable" />
+
+    <bpmn:sequenceFlow id="Flow_readable_yes" name="Readable" sourceRef="GW_Readable" targetRef="Task_ExtractData">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${isReadable == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_readable_no" name="Unreadable" sourceRef="GW_Readable" targetRef="Task_SendCogEmail">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${isReadable == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_extract_to_merge" sourceRef="Task_ExtractData" targetRef="GW_Merge" />
+
+    <bpmn:sequenceFlow id="Flow_cog_to_wait" sourceRef="Task_SendCogEmail" targetRef="Event_WaitCogForm" />
+    <bpmn:sequenceFlow id="Flow_wait_to_extract_cog" sourceRef="Event_WaitCogForm" targetRef="Task_ExtractDataCog" />
+    <bpmn:sequenceFlow id="Flow_extract_cog_to_merge" sourceRef="Task_ExtractDataCog" targetRef="GW_Merge" />
+
+    <bpmn:sequenceFlow id="Flow_merge_to_set" sourceRef="GW_Merge" targetRef="Task_SetReady" />
+    <bpmn:sequenceFlow id="Flow_set_to_end" sourceRef="Task_SetReady" targetRef="End_DataReady" />
+
+  </bpmn:process>
+
+  <!-- ================================================================ -->
+  <!-- DIAGRAM                                                          -->
+  <!-- ================================================================ -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_rule3">
+    <bpmndi:BPMNPlane id="BPMNPlane_rule3" bpmnElement="ValidateApplicationReadability">
+
+      <bpmndi:BPMNShape id="Shape_Start" bpmnElement="Start_Rule3">
+        <dc:Bounds x="160" y="282" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Assess" bpmnElement="Task_AssessReadability">
+        <dc:Bounds x="260" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_GW_Readable" bpmnElement="GW_Readable" isMarkerVisible="true">
+        <dc:Bounds x="425" y="275" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <!-- Success path (top) -->
+      <bpmndi:BPMNShape id="Shape_Extract" bpmnElement="Task_ExtractData">
+        <dc:Bounds x="540" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- COG path (bottom) -->
+      <bpmndi:BPMNShape id="Shape_SendCog" bpmnElement="Task_SendCogEmail">
+        <dc:Bounds x="540" y="370" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_WaitCog" bpmnElement="Event_WaitCogForm">
+        <dc:Bounds x="702" y="392" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_ExtractCog" bpmnElement="Task_ExtractDataCog">
+        <dc:Bounds x="790" y="370" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Merge -->
+      <bpmndi:BPMNShape id="Shape_GW_Merge" bpmnElement="GW_Merge" isMarkerVisible="true">
+        <dc:Bounds x="945" y="275" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_SetReady" bpmnElement="Task_SetReady">
+        <dc:Bounds x="1050" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_End" bpmnElement="End_DataReady">
+        <dc:Bounds x="1210" y="282" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Edges -->
+      <bpmndi:BPMNEdge id="Edge_start" bpmnElement="Flow_start_to_assess">
+        <di:waypoint x="196" y="300" />
+        <di:waypoint x="260" y="300" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_assess_gw" bpmnElement="Flow_assess_to_gw">
+        <di:waypoint x="360" y="300" />
+        <di:waypoint x="425" y="300" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_readable_yes" bpmnElement="Flow_readable_yes">
+        <di:waypoint x="450" y="275" />
+        <di:waypoint x="450" y="200" />
+        <di:waypoint x="540" y="200" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_readable_no" bpmnElement="Flow_readable_no">
+        <di:waypoint x="450" y="325" />
+        <di:waypoint x="450" y="410" />
+        <di:waypoint x="540" y="410" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_extract_merge" bpmnElement="Flow_extract_to_merge">
+        <di:waypoint x="640" y="200" />
+        <di:waypoint x="970" y="200" />
+        <di:waypoint x="970" y="275" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_cog_wait" bpmnElement="Flow_cog_to_wait">
+        <di:waypoint x="640" y="410" />
+        <di:waypoint x="702" y="410" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_wait_extract" bpmnElement="Flow_wait_to_extract_cog">
+        <di:waypoint x="738" y="410" />
+        <di:waypoint x="790" y="410" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_extract_cog_merge" bpmnElement="Flow_extract_cog_to_merge">
+        <di:waypoint x="890" y="410" />
+        <di:waypoint x="970" y="410" />
+        <di:waypoint x="970" y="325" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_merge_set" bpmnElement="Flow_merge_to_set">
+        <di:waypoint x="995" y="300" />
+        <di:waypoint x="1050" y="300" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_set_end" bpmnElement="Flow_set_to_end">
+        <di:waypoint x="1150" y="300" />
+        <di:waypoint x="1210" y="300" />
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</bpmn:definitions>

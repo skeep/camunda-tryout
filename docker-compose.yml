@@ -1,0 +1,123 @@
+services:
+  # -------------------------------------------------------------------
+  # PostgreSQL 15 – primary datastore for Camunda process engine
+  # -------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: camunda-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-camunda}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-camunda}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-camunda} -d ${POSTGRES_DB:-camunda}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+        reservations:
+          memory: 256m
+          cpus: "0.25"
+
+  # -------------------------------------------------------------------
+  # Camunda 7 BPM Platform (Tomcat distribution)
+  # -------------------------------------------------------------------
+  camunda:
+    image: camunda/camunda-bpm-platform:${CAMUNDA_VERSION:-7.22.0}
+    container_name: camunda-bpm
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_DRIVER: org.postgresql.Driver
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-camunda}
+      DB_USERNAME: ${POSTGRES_USER:-camunda}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      DB_CONN_MAXACTIVE: ${DB_CONN_MAXACTIVE:-20}
+      DB_CONN_MAXIDLE: ${DB_CONN_MAXIDLE:-20}
+      DB_CONN_MINIDLE: ${DB_CONN_MINIDLE:-5}
+      DB_VALIDATE_ON_BORROW: "true"
+      DB_VALIDATION_QUERY: "SELECT 1"
+      WAIT_FOR: postgres:5432
+      WAIT_FOR_TIMEOUT: 60
+      TZ: ${TZ:-UTC}
+      JMX_PROMETHEUS: ${JMX_PROMETHEUS:-false}
+      JAVA_OPTS: ${JAVA_OPTS:--Xms512m -Xmx1024m}
+    ports:
+      - "${CAMUNDA_PORT:-8080}:8080"
+      - "${CAMUNDA_JMX_PORT:-9404}:9404"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
+        reservations:
+          memory: 512m
+          cpus: "0.5"
+
+  # -------------------------------------------------------------------
+  # pgAdmin 4 – database administration UI (optional, profile: tools)
+  # -------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: camunda-pgadmin
+    restart: unless-stopped
+    profiles:
+      - tools
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@localhost}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+  # -------------------------------------------------------------------
+  # Mock External Task Worker (dev only – profile: dev)
+  # -------------------------------------------------------------------
+  mock-worker:
+    build:
+      context: ./mock-worker
+      dockerfile: Dockerfile
+    container_name: camunda-mock-worker
+    restart: unless-stopped
+    profiles:
+      - dev
+    depends_on:
+      camunda:
+        condition: service_started
+    environment:
+      CAMUNDA_REST_URL: http://camunda:8080/engine-rest
+      WORKER_ID: ${MOCK_WORKER_ID:-mock-worker-001}
+      POLL_INTERVAL: ${MOCK_POLL_INTERVAL:-2}
+      LOCK_DURATION: ${MOCK_LOCK_DURATION:-30000}
+      LOG_LEVEL: ${MOCK_LOG_LEVEL:-INFO}
+      MOCK_IS_READABLE: ${MOCK_IS_READABLE:-true}
+      MOCK_IS_DUPLICATE: ${MOCK_IS_DUPLICATE:-false}
+      MOCK_AUTO_COG_RESPONSE: ${MOCK_AUTO_COG_RESPONSE:-true}
+      MOCK_COG_DELAY: ${MOCK_COG_DELAY:-3}
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local

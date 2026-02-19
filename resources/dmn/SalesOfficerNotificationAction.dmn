@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:camunda="http://camunda.org/schema/1.0/dmn"
+             xmlns:biodi="http://bpmn.io/schema/dmn/biodi/2.0"
+             id="Definitions_notification"
+             name="SalesOfficerNotificationAction"
+             namespace="http://camunda.org/schema/1.0/dmn"
+             exporter="Camunda Modeler"
+             exporterVersion="5.44.0">
+
+  <decision id="SalesOfficerNotificationAction"
+            name="Sales Officer Notification Action"
+            camunda:historyTimeToLive="180">
+
+    <decisionTable id="DT_notification" hitPolicy="FIRST">
+
+      <!-- INPUTS -->
+      <input id="Input_triggerReason" label="triggerReason">
+        <inputExpression id="IE_triggerReason" typeRef="string">
+          <text>triggerReason</text>
+        </inputExpression>
+      </input>
+
+      <input id="Input_notificationStage" label="notificationStage">
+        <inputExpression id="IE_notificationStage" typeRef="string">
+          <text>notificationStage</text>
+        </inputExpression>
+      </input>
+
+      <input id="Input_isBusinessHours" label="isBusinessHours">
+        <inputExpression id="IE_isBusinessHours" typeRef="boolean">
+          <text>isBusinessHours</text>
+        </inputExpression>
+      </input>
+
+      <input id="Input_responseReceived" label="responseReceived">
+        <inputExpression id="IE_responseReceived" typeRef="boolean">
+          <text>responseReceived</text>
+        </inputExpression>
+      </input>
+
+      <!-- OUTPUTS -->
+      <output id="Output_action" label="action" name="action" typeRef="string" biodi:width="220" />
+      <output id="Output_notificationType" label="notificationType" name="notificationType" typeRef="string" biodi:width="200" />
+
+      <!-- Rule 1: Kill switch – response received at any stage -->
+      <rule id="Rule_response_received">
+        <description>Kill switch: Sales Officer responded – stop everything and resume loan processing</description>
+        <inputEntry id="UT_r1_trigger"><text></text></inputEntry>
+        <inputEntry id="UT_r1_stage"><text></text></inputEntry>
+        <inputEntry id="UT_r1_bh"><text></text></inputEntry>
+        <inputEntry id="UT_r1_resp"><text>true</text></inputEntry>
+        <outputEntry id="OE_r1_action"><text>"RESUME_PROCESSING"</text></outputEntry>
+        <outputEntry id="OE_r1_type"><text>"NONE"</text></outputEntry>
+      </rule>
+
+      <!-- Rule 2: Initial notification – within business hours -->
+      <rule id="Rule_initial_bh">
+        <description>Send initial notification immediately during business hours</description>
+        <inputEntry id="UT_r2_trigger"><text>not("SUCCESS")</text></inputEntry>
+        <inputEntry id="UT_r2_stage"><text>"INITIAL"</text></inputEntry>
+        <inputEntry id="UT_r2_bh"><text>true</text></inputEntry>
+        <inputEntry id="UT_r2_resp"><text>false</text></inputEntry>
+        <outputEntry id="OE_r2_action"><text>"SEND_NOW"</text></outputEntry>
+        <outputEntry id="OE_r2_type"><text>"INITIAL_ALERT"</text></outputEntry>
+      </rule>
+
+      <!-- Rule 3: Initial notification – outside business hours -->
+      <rule id="Rule_initial_outside_bh">
+        <description>Schedule initial notification for next business window</description>
+        <inputEntry id="UT_r3_trigger"><text>not("SUCCESS")</text></inputEntry>
+        <inputEntry id="UT_r3_stage"><text>"INITIAL"</text></inputEntry>
+        <inputEntry id="UT_r3_bh"><text>false</text></inputEntry>
+        <inputEntry id="UT_r3_resp"><text>false</text></inputEntry>
+        <outputEntry id="OE_r3_action"><text>"SCHEDULE_NEXT_WINDOW"</text></outputEntry>
+        <outputEntry id="OE_r3_type"><text>"INITIAL_ALERT"</text></outputEntry>
+      </rule>
+
+      <!-- Rule 4: FU1 – within business hours -->
+      <rule id="Rule_fu1_bh">
+        <description>Send first follow-up (1 hour after initial) during business hours</description>
+        <inputEntry id="UT_r4_trigger"><text></text></inputEntry>
+        <inputEntry id="UT_r4_stage"><text>"FU1"</text></inputEntry>
+        <inputEntry id="UT_r4_bh"><text>true</text></inputEntry>
+        <inputEntry id="UT_r4_resp"><text>false</text></inputEntry>
+        <outputEntry id="OE_r4_action"><text>"SEND_NOW"</text></outputEntry>
+        <outputEntry id="OE_r4_type"><text>"FOLLOW_UP_1"</text></outputEntry>
+      </rule>
+
+      <!-- Rule 5: FU1 – outside business hours -->
+      <rule id="Rule_fu1_outside_bh">
+        <description>Schedule FU1 for next business window (Monday 6AM if weekend)</description>
+        <inputEntry id="UT_r5_trigger"><text></text></inputEntry>
+        <inputEntry id="UT_r5_stage"><text>"FU1"</text></inputEntry>
+        <inputEntry id="UT_r5_bh"><text>false</text></inputEntry>
+        <inputEntry id="UT_r5_resp"><text>false</text></inputEntry>
+        <outputEntry id="OE_r5_action"><text>"SCHEDULE_NEXT_WINDOW"</text></outputEntry>
+        <outputEntry id="OE_r5_type"><text>"FOLLOW_UP_1"</text></outputEntry>
+      </rule>
+
+      <!-- Rule 6: FU2 – within business hours -->
+      <rule id="Rule_fu2_bh">
+        <description>Send second follow-up (3 hours after FU1) during business hours</description>
+        <inputEntry id="UT_r6_trigger"><text></text></inputEntry>
+        <inputEntry id="UT_r6_stage"><text>"FU2"</text></inputEntry>
+        <inputEntry id="UT_r6_bh"><text>true</text></inputEntry>
+        <inputEntry id="UT_r6_resp"><text>false</text></inputEntry>
+        <outputEntry id="OE_r6_action"><text>"SEND_NOW"</text></outputEntry>
+        <outputEntry id="OE_r6_type"><text>"FOLLOW_UP_2"</text></outputEntry>
+      </rule>
+
+      <!-- Rule 7: FU2 – outside business hours -->
+      <rule id="Rule_fu2_outside_bh">
+        <description>Schedule FU2 for next business window</description>
+        <inputEntry id="UT_r7_trigger"><text></text></inputEntry>
+        <inputEntry id="UT_r7_stage"><text>"FU2"</text></inputEntry>
+        <inputEntry id="UT_r7_bh"><text>false</text></inputEntry>
+        <inputEntry id="UT_r7_resp"><text>false</text></inputEntry>
+        <outputEntry id="OE_r7_action"><text>"SCHEDULE_NEXT_WINDOW"</text></outputEntry>
+        <outputEntry id="OE_r7_type"><text>"FOLLOW_UP_2"</text></outputEntry>
+      </rule>
+
+      <!-- Rule 8: 16-hour deadline reached – close workflow -->
+      <rule id="Rule_deadline">
+        <description>16 business-hour deadline reached without response – send closing message</description>
+        <inputEntry id="UT_r8_trigger"><text></text></inputEntry>
+        <inputEntry id="UT_r8_stage"><text>"DEADLINE"</text></inputEntry>
+        <inputEntry id="UT_r8_bh"><text></text></inputEntry>
+        <inputEntry id="UT_r8_resp"><text>false</text></inputEntry>
+        <outputEntry id="OE_r8_action"><text>"CLOSE_WORKFLOW"</text></outputEntry>
+        <outputEntry id="OE_r8_type"><text>"CLOSING_MESSAGE"</text></outputEntry>
+      </rule>
+
+    </decisionTable>
+  </decision>
+
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram>
+      <dmndi:DMNShape id="Shape_notification" dmnElementRef="SalesOfficerNotificationAction">
+        <dc:Bounds height="80" width="180" x="160" y="80" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+
+</definitions>
